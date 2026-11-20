@@ -18,7 +18,7 @@ export function ReorderButton({ orderId }: { orderId: string }) {
           start(async () => {
             const res = await reorder(orderId);
             if (!res.ok) return setMsg(res.error);
-            const { added = 0, skipped = 0 } = res.data ?? {};
+            const { added, skipped } = res.data ?? { added: 0, skipped: 0 };
             setMsg(skipped ? `${added} item(s) added. ${skipped} couldn't be re-added (custom designs or unavailable items) — message us to reorder those.` : null);
             router.refresh();
             if (added) openCartDrawer();
