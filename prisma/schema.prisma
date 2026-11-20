@@ -1,0 +1,631 @@
+// Made by Myra — database schema (PostgreSQL)
+// All money values are stored as integer cents.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ─────────────────────────────── Users & auth ───────────────────────────────
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String?
+  passwordHash     String?
+  role             Role      @default(CUSTOMER)
+  googleId         String?   @unique
+  stripeCustomerId String?   @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  addresses   Address[]
+  orders      Order[]
+  wishlist    WishlistItem[]
+  reviews     Review[]
+  cart        Cart?
+  resetTokens PasswordResetToken[]
+  uploads     Upload[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  country    String   @default("US")
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── Catalog ───────────────────────────────
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  showOnHome  Boolean   @default(true)
+  isSeasonal  Boolean   @default(false)
+  products    Product[]
+}
+
+enum ProductStatus {
+  DRAFT
+  PUBLISHED
+  HIDDEN
+}
+
+enum GarmentType {
+  TSHIRT
+  LONGSLEEVE
+  HOODIE
+  CREWNECK
+  SWEATPANTS
+  SHORTS
+  TOTE
+  OTHER
+}
+
+enum DesignRequestMode {
+  FIXED_FEE // customer pays the design fee at checkout
+  QUOTE // customer submits a quote request; nothing is charged until priced
+}
+
+model Product {
+  id                 String            @id @default(cuid())
+  title              String
+  slug               String            @unique
+  description        String
+  materials          String?
+  careInstructions   String?
+  productionTime     String? // e.g. "Made to order in 5–7 business days" (owner-entered)
+  sizeChart          Json? // { columns: string[], rows: string[][] }
+  basePriceCents     Int
+  garmentType        GarmentType       @default(OTHER)
+  categoryId         String?
+  tags               String[]
+  status             ProductStatus     @default(DRAFT)
+  isFeatured         Boolean           @default(false)
+  isCustomizable     Boolean           @default(true)
+  allowUpload        Boolean           @default(true)
+  allowDesignRequest Boolean           @default(true)
+  designRequestMode  DesignRequestMode @default(FIXED_FEE)
+  designFeeCents     Int? // null = use the global design fee from settings
+  isDemo             Boolean           @default(false)
+  soldCount          Int               @default(0)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  category       Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  colors         ProductColor[]
+  sizes          ProductSize[]
+  variants       ProductVariant[]
+  images         ProductImage[]
+  printLocations PrintLocation[]
+  reviews        Review[]
+  wishlist       WishlistItem[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+
+  @@index([status, isFeatured])
+}
+
+model ProductColor {
+  id        String           @id @default(cuid())
+  productId String
+  name      String
+  hex       String
+  sortOrder Int              @default(0)
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variants  ProductVariant[]
+  images    ProductImage[]
+}
+
+model ProductSize {
+  id             String           @id @default(cuid())
+  productId      String
+  label          String
+  surchargeCents Int              @default(0)
+  sortOrder      Int              @default(0)
+  product        Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variants       ProductVariant[]
+}
+
+// One row per color × size. stock = null means "made to order / not tracked".
+model ProductVariant {
+  id                 String         @id @default(cuid())
+  productId          String
+  colorId            String
+  sizeId             String
+  sku                String?        @unique
+  priceOverrideCents Int?
+  stock              Int?
+  isAvailable        Boolean        @default(true)
+  product            Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color              ProductColor   @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  size               ProductSize    @relation(fields: [sizeId], references: [id], onDelete: Cascade)
+  inventoryLogs      InventoryLog[]
+  cartItems          CartItem[]
+
+  @@unique([productId, colorId, sizeId])
+}
+
+model InventoryLog {
+  id        String         @id @default(cuid())
+  variantId String
+  change    Int
+  reason    String
+  createdAt DateTime       @default(now())
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+enum ImageView {
+  FRONT
+  BACK
+  LEFT
+  RIGHT
+  DETAIL
+  LIFESTYLE
+}
+
+enum ImageKind {
+  PHOTO // product photography
+  MOCKUP // blank garment mockup used by the customizer preview
+}
+
+model ProductImage {
+  id        String        @id @default(cuid())
+  productId String
+  url       String
+  key       String
+  alt       String?
+  colorId   String?
+  view      ImageView     @default(FRONT)
+  kind      ImageKind     @default(PHOTO)
+  sortOrder Int           @default(0)
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color     ProductColor? @relation(fields: [colorId], references: [id], onDelete: SetNull)
+}
+
+// Customization configuration: where a product can be printed and what it costs.
+// area* values are percentages (0–100) of the mockup image for the given view.
+model PrintLocation {
+  id         String    @id @default(cuid())
+  productId  String
+  name       String // "Front center", "Left leg"…
+  view       ImageView @default(FRONT)
+  areaX      Float
+  areaY      Float
+  areaW      Float
+  areaH      Float
+  widthIn    Float // physical max print width in inches (for resolution warnings)
+  heightIn   Float
+  priceCents Int       @default(0)
+  sortOrder  Int       @default(0)
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── Uploads ───────────────────────────────
+
+enum UploadPurpose {
+  ARTWORK
+  INSPIRATION
+  PROOF
+  REVIEW_PHOTO
+  CONTACT
+  MESSAGE
+  PRODUCT_IMAGE
+  CONTENT_IMAGE
+}
+
+enum UploadStatus {
+  PENDING
+  READY
+  REJECTED
+}
+
+model Upload {
+  id          String        @id @default(cuid())
+  key         String        @unique
+  isPublic    Boolean       @default(false)
+  purpose     UploadPurpose
+  filename    String
+  contentType String
+  size        Int
+  width       Int?
+  height      Int?
+  status      UploadStatus  @default(PENDING)
+  userId      String?
+  cartId      String?
+  orderId     String? // set once attached to an order (controls who may download it)
+  createdAt   DateTime      @default(now())
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order       Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+// ─────────────────────────────── Cart ───────────────────────────────
+
+model Cart {
+  id        String     @id @default(cuid())
+  token     String     @unique // random secret stored in an httpOnly cookie
+  userId    String?    @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+}
+
+model CartItem {
+  id             String         @id @default(cuid())
+  cartId         String
+  productId      String
+  variantId      String
+  quantity       Int            @default(1)
+  savedForLater  Boolean        @default(false)
+  // Validated JSON — see src/lib/customization.ts
+  customization  Json?
+  createdAt      DateTime       @default(now())
+  cart           Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── Orders ───────────────────────────────
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  CANCELLED
+}
+
+enum OrderStatus {
+  ORDER_RECEIVED
+  AWAITING_DESIGN
+  AWAITING_APPROVAL
+  IN_PRODUCTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id                    String        @id @default(cuid())
+  number                Int           @unique @default(autoincrement())
+  userId                String?
+  email                 String?
+  customerName          String?
+  phone                 String?
+  accessToken           String        @unique // lets guests view their order via emailed link
+  paymentStatus         PaymentStatus @default(PENDING)
+  status                OrderStatus   @default(ORDER_RECEIVED)
+  currency              String        @default("usd")
+  subtotalCents         Int
+  discountCents         Int           @default(0)
+  shippingCents         Int           @default(0)
+  taxCents              Int           @default(0)
+  totalCents            Int
+  discountCodeId        String?
+  shippingAddress       Json?
+  billingAddress        Json?
+  stripeSessionId       String?       @unique
+  stripePaymentIntentId String?       @unique
+  internalNotes         String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  paidAt                DateTime?
+
+  user         User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  discountCode DiscountCode?   @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  events       OrderEvent[]
+  messages     OrderMessage[]
+  payments     Payment[]
+  shipments    Shipment[]
+  uploads      Upload[]
+
+  @@index([paymentStatus, status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id                 String         @id @default(cuid())
+  orderId            String
+  productId          String?
+  variantId          String?
+  productTitle       String
+  colorName          String
+  sizeLabel          String
+  quantity           Int
+  unitPriceCents     Int // base + size surcharge / variant price
+  customizationCents Int            @default(0) // per unit (print placements)
+  designFeeCents     Int            @default(0) // once per line
+  lineTotalCents     Int
+  customization      Json?
+  requiresDesign     Boolean        @default(false)
+  designApproved     Boolean        @default(false)
+  revisionsUsed      Int            @default(0)
+  order              Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product            Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  artworks           ArtworkFile[]
+  designRequest      DesignRequest?
+  proofs             DesignProof[]
+  review             Review?
+}
+
+model ArtworkFile {
+  id           String    @id @default(cuid())
+  orderItemId  String
+  uploadId     String
+  locationName String
+  posX         Float     @default(0.5)
+  posY         Float     @default(0.5)
+  scale        Float     @default(0.8)
+  orderItem    OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+enum DesignRequestStatus {
+  QUOTE_REQUESTED // submitted without payment; owner will reply with a price
+  QUOTE_SENT
+  IN_ORDER // attached to a paid order
+  CLOSED
+}
+
+model DesignRequest {
+  id                  String              @id @default(cuid())
+  orderItemId         String?             @unique
+  productId           String?
+  userId              String?
+  email               String
+  name                String?
+  description         String
+  textToInclude       String?
+  preferredColors     String?
+  style               String?
+  placement           String?
+  occasion            String?
+  notes               String?
+  inspirationUploadIds String[]
+  status              DesignRequestStatus @default(IN_ORDER)
+  ownerReply          String?
+  // Reserved for a future AI concept integration (see src/lib/ai/design-concepts.ts)
+  aiConceptUploadId   String?
+  createdAt           DateTime            @default(now())
+  orderItem           OrderItem?          @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+enum ProofStatus {
+  PENDING_REVIEW
+  APPROVED
+  REVISION_REQUESTED
+}
+
+model DesignProof {
+  id              String      @id @default(cuid())
+  orderItemId     String
+  version         Int
+  uploadId        String
+  ownerNote       String?
+  status          ProofStatus @default(PENDING_REVIEW)
+  customerComment String?
+  respondedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  orderItem       OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+}
+
+model OrderEvent {
+  id                String   @id @default(cuid())
+  orderId           String
+  type              String
+  message           String
+  visibleToCustomer Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+enum MessageAuthor {
+  CUSTOMER
+  OWNER
+}
+
+model OrderMessage {
+  id        String        @id @default(cuid())
+  orderId   String
+  author    MessageAuthor
+  body      String
+  uploadId  String?
+  createdAt DateTime      @default(now())
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+enum PaymentType {
+  ORDER
+  REVISION_FEE
+}
+
+model Payment {
+  id                    String      @id @default(cuid())
+  orderId               String
+  type                  PaymentType @default(ORDER)
+  stripeSessionId       String?     @unique
+  stripePaymentIntentId String?
+  amountCents           Int
+  refundedCents         Int         @default(0)
+  status                String // "paid" | "refunded" | "partially_refunded"
+  createdAt             DateTime    @default(now())
+  order                 Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  refunds               Refund[]
+}
+
+model Refund {
+  id             String   @id @default(cuid())
+  paymentId      String
+  stripeRefundId String   @unique
+  amountCents    Int
+  reason         String?
+  createdAt      DateTime @default(now())
+  payment        Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+enum Carrier {
+  USPS
+  UPS
+  FEDEX
+  DHL
+  OTHER
+}
+
+model Shipment {
+  id             String    @id @default(cuid())
+  orderId        String
+  carrier        Carrier
+  trackingNumber String
+  trackingUrl    String?
+  shippedAt      DateTime  @default(now())
+  deliveredAt    DateTime?
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────── Engagement ───────────────────────────────
+
+model Review {
+  id            String     @id @default(cuid())
+  productId     String
+  userId        String
+  orderItemId   String?    @unique
+  rating        Int
+  title         String?
+  body          String
+  photoUploadId String?
+  approved      Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  product       Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItem     OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, productId])
+}
+
+model WishlistItem {
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([userId, productId])
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model DiscountCode {
+  id               String       @id @default(cuid())
+  code             String       @unique
+  type             DiscountType
+  value            Int // percent (1–100) or cents
+  minSubtotalCents Int?
+  maxRedemptions   Int?
+  redemptions      Int          @default(0)
+  expiresAt        DateTime?
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  orders           Order[]
+}
+
+model ShippingRate {
+  id           String  @id @default(cuid())
+  name         String
+  amountCents  Int
+  freeOverCents Int?
+  minDays      Int?
+  maxDays      Int?
+  active       Boolean @default(true)
+  sortOrder    Int     @default(0)
+}
+
+// Editable storefront content & settings, keyed JSON (see src/lib/content.ts)
+model SiteContent {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model FaqItem {
+  id        String  @id @default(cuid())
+  question  String
+  answer    String
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+}
+
+model NewsletterSubscriber {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  consentAt      DateTime
+  source         String?
+  syncedAt       DateTime?
+  unsubscribedAt DateTime?
+  createdAt      DateTime  @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  category  String
+  subject   String
+  message   String
+  uploadId  String?
+  handled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────── Infrastructure ───────────────────────────────
+
+model RateLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime
+}
+
+model StripeEvent {
+  id          String   @id // Stripe event id, for idempotent webhook handling
+  type        String
+  processedAt DateTime @default(now())
+}

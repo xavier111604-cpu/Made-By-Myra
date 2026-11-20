@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color: #302a29;
+    background: #ffffff;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply font-sans text-[15px] leading-relaxed;
+  }
+  ::selection {
+    background: #f6dce0;
+  }
+  :focus-visible {
+    outline: 2px solid #bb9255;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+  .heading-script {
+    @apply font-script font-semibold leading-tight tracking-normal;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-blush text-charcoal shadow-soft hover:-translate-y-0.5 hover:bg-blush-hover hover:shadow-lift active:translate-y-0;
+  }
+  .btn-secondary {
+    @apply btn border border-charcoal/80 bg-white text-charcoal hover:border-gold hover:text-gold;
+  }
+  .btn-ghost {
+    @apply btn px-3 py-2 text-charcoal hover:bg-cream;
+  }
+  .btn-dark {
+    @apply btn bg-charcoal text-white hover:bg-charcoal/90;
+  }
+  .btn-sm {
+    @apply px-4 py-2 text-xs;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-charcoal placeholder:text-charcoal/40 transition focus:border-blush-dusty focus:outline-none focus:ring-2 focus:ring-blush;
+  }
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-charcoal;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-white shadow-soft;
+  }
+  .link-gold {
+    @apply relative text-charcoal transition-colors hover:text-gold;
+  }
+  .link-gold::after {
+    content: "";
+    @apply absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0 bg-gold transition-transform duration-300;
+  }
+  .link-gold:hover::after,
+  .link-gold[aria-current="page"]::after {
+    @apply scale-x-100;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full border border-line bg-cream px-3 py-1 text-xs font-medium;
+  }
+  .admin-table th {
+    @apply whitespace-nowrap border-b border-line bg-cream px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-charcoal/70;
+  }
+  .admin-table td {
+    @apply border-b border-line px-3 py-2.5 align-top text-sm;
+  }
+}
+
+/* Respect reduced motion: disable non-essential animation */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
