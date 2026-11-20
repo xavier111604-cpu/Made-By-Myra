@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { cn } from "@/lib/format";
 
 export function NewsletterForm({ compact = false, source = "home" }: { compact?: boolean; source?: string }) {
