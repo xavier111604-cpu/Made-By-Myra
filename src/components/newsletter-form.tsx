@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/format";
 
 export function NewsletterForm({ compact = false, source = "home" }: { compact?: boolean; source?: string }) {
@@ -56,7 +56,7 @@ export function NewsletterForm({ compact = false, source = "home" }: { compact?:
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 accent-[#E8B5C0]" />
         <span>
           Yes, email me about new products, updates and promotions. I can unsubscribe at any time. See our{" "}
-          <a href="/policies/privacy" className="underline">privacy policy</a>.
+         <Link href="/policies/privacy" className="underline">privacy policy</Link>.
         </span>
       </label>
       {state === "error" && <p className="text-xs text-red-700" role="alert">{msg}</p>}
